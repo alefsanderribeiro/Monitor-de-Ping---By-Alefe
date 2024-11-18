@@ -5,23 +5,33 @@ Um programa simples e eficiente para monitoramento contínuo de ping com registr
 ## 📋 Características
 
 - Interface de console amigável
-- Histórico dos últimos 5 endereços monitorados
+- Histórico dos últimos endereços monitorados
 - Logs detalhados com data e hora
 - Suporte para Windows e Linux
 - Monitoramento em tempo real
 - Salvamento automático de logs
+- Notificações via Email, SMS, Telegram, WhatsApp e Desktop
 
 ## 🚀 Instalação
 
 ### Pré-requisitos
 
 - Python 3.6 ou superior
-- cx_Freeze (para criar o executável)
+
 
 ### Instalando as dependências
+Para instalar as dependências, utilize o UV com o seguinte comando:
+
 ```bash
-pip install cx_freeze
+uv sync
 ```
+
+Caso não tneha o UV instalado, você pode usar o seguinte comando:
+
+```bash
+pip install uv
+```
+
 
 ### Criando o executável
 
@@ -32,13 +42,12 @@ python setup.py build
 ## 💻 Como usar
 
 1. Execute o programa:
-   - Via Python: `python main.py`
+   - Via Python: `python src/main.py`
    - Ou use o executável gerado: `Monitor de Ping.exe`
 
 2. Selecione uma opção:
-   - Escolha um endereço do histórico
-   - Digite 0 para inserir um novo endereço
-   - Pressione Enter para usar o padrão (8.8.8.8)
+   - Escolha um endereço do histórico ou digite 'D' para inserir um novo endereço.
+   - Digita 'S' para iniciar o monitoramento.
 
 3. O programa iniciará o monitoramento e mostrará:
    - Status da conexão
@@ -52,33 +61,28 @@ python setup.py build
 ```
 Monitor de Ping/
 │
-├── main.py              # Código principal
-├── setup.py            # Configuração para criar executável
-├── historico_ping.json # Arquivo de histórico
+├── src/
+│   ├── main.py              # Código principal
+│   ├── configuracao.py      # Configurações do monitoramento
+│   ├── log.py               # Gerenciamento de logs
+│   ├── notificação.py        # Notificadores (Email, SMS, etc.)
+│   ├── logo_alefe.py        # Logo do programa
+│   └── historico_ping.json   # Arquivo de histórico
 │
-└── logs/               # Pasta com arquivos de log
-    └── ping_log_YYYYMMDD_HHMMSS.txt
+├── setup.py                 # Configuração para criar executável
+├── pyproject.toml           # Dependências do projeto
+├── README.md                # Documentação do projeto
+├── LICENSE                  # Licença do projeto
+└── .gitignore               # Arquivos a serem ignorados pelo Git
 ```
 
 ## 📊 Formato do Log
 
 Os logs são salvos em arquivos de texto com o seguinte formato:
 ```
-Monitoramento de ping para [endereço]
-Início: YYYY-MM-DD HH:MM:SS
---------------------------------------------------
-[HH:MM:SS] Status: Sucesso - Ping: XXms
-[HH:MM:SS] Status: Timeout
-[HH:MM:SS] Status: Falha na conexão
+[YYYY-MM-DD HH:MM:SS] Host: [endereço] - Ping: [tempo]ms - Status: [status]
+
 ```
-
-## ⚙️ Configurações
-
-O programa inclui algumas configurações padrão:
-- Mantém histórico dos últimos 5 endereços
-- Atualiza a cada 1 segundo
-- Interface em cores (verde sobre preto no Windows)
-- Janela do console otimizada (100x30 caracteres)
 
 ## 🤝 Contribuindo
 
@@ -100,7 +104,7 @@ Alefsander - [GitHub](https://github.com/alefsanderribeiro)
 
 ## 🔄 Versão
 
-- Versão atual: 0.0.1
+- Versão atual: 0.2.0
 
 ## 📞 Suporte
 
