@@ -65,9 +65,9 @@ Monitor de Ping/
 │   ├── main.py              # Código principal
 │   ├── configuracao.py      # Configurações do monitoramento
 │   ├── log.py               # Gerenciamento de logs
-│   ├── notificação.py        # Notificadores (Email, SMS, etc.)
-│   ├── logo_alefe.py        # Logo do programa
-│   └── historico_ping.json   # Arquivo de histórico
+│   ├── notificação.py       # Notificadores (Email, SMS, etc.)
+│   └── logo_alefe.py        # Logo do programa
+│   
 │
 ├── setup.py                 # Configuração para criar executável
 ├── pyproject.toml           # Dependências do projeto
