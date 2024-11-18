@@ -1,19 +1,29 @@
+import sys
+import os
 import threading
 import platform
 import subprocess
 import time
 from datetime import datetime
-import os
 import json
 from notificação import configurar_notificacoes
 from log import GerenciadorLog
-from logo_alefe import apresentação
+from logo_alefe import Apresentação
+from configuracao import Configuracao
 
+# Adiciona o caminho do diretório pai ao sistema
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from __init__ import __version__
+
+# Nome dos arquivos de histórico e configuração
 HISTORICO_FILE = 'historico_endereço_ping.json'
 CONFIG_FILE = 'config.json'
+
 # Classe para gerenciar o monitoramento de múltiplos hosts
 class MonitorHost:
     def __init__(self, host):
+        """Inicializa o monitoramento de um host específico."""
         self.host = host
         self.ultimo_ping = None
         self.status = "Iniciando..."
@@ -24,7 +34,7 @@ class MonitorHost:
         self.ultima_notificacao_enviada = None  # Novo atributo para controlar notificações
         
     def adicionar_resultado(self, ping, status):
-        """Adiciona um novo resultado de ping e atualiza as estatísticas"""
+        """Adiciona um novo resultado de ping e atualiza as estatísticas."""
         self.ultimo_ping = ping
         self.status = status
         tempo_atual = datetime.now()
@@ -47,70 +57,31 @@ class MonitorHost:
             self.ultima_falha = None
             
     def deve_notificar(self):
-        """Verifica se deve enviar uma nova notificação"""
+        """Verifica se deve enviar uma nova notificação."""
         return True if self.status != "Sucesso" else False
 
 
 class MonitorMultiplosHosts:
     def __init__(self):
-        self.hosts = {}  # Dicionário para armazenar os monitores de cada host
+        """Inicializa o monitoramento de múltiplos hosts."""
+        self.hosts = {}
         self.running = False
         self.threads = []
         self.lock = threading.Lock()
-        self.gerenciador_log = GerenciadorLog()  # Nova instância
-        self.historico = self.carregar_historico()  # Carrega o histórico ao iniciar
+        self.historico = self.carregar_historico()
         
-        # Carrega configurações do arquivo
-        self.carregar_configuracoes()
-        self.notificador = configurar_notificacoes(self.carregar_configuracoes())
+        self.config = Configuracao()  # Mantenha a instância da configuração, mas não atualize ainda
 
-    def carregar_configuracoes(self):
-        """Carrega as configurações do arquivo JSON ou cria um novo com configurações padrão"""
-        # Dicionário com as configurações padrão
-        configuracoes_padrao = {
-            'intervalo_ping': 1,
-            'max_hosts': 9,
-            'tipos_notificacao': ['desktop'],
-            # Configurar envio de email
-            'email_remetente': 'seu_email@gmail.com',
-            'senha_remetente': 'sua_senha',
-            'email_destinatario': 'destinatario@gmail.com',
-            # Configurar envio no Telegram
-            'token_bot_telegram': 'seu_token_bot',
-            'chat_id_telegram': 'seu_chat_id',
-            # Configurar envio no SMS
-            'account_sid_twilio': 'seu_account_sid',
-            'auth_token_twilio': 'seu_auth_token',
-            'numero_remetente_twilio': '+1234567890',
-            'numero_destinatario_twilio': '+0987654321',
-            # Configurar envio no WhatsApp
-            'url_whatsapp': 'https://graph.facebook.com/v13.0/YOUR_PHONE_NUMBER_ID/messages',
-            'token_whatsapp': 'YOUR_ACCESS_TOKEN',
-            'numero_destinatario_whatsapp': '5599993451333'
-        }
-
-        if os.path.exists(CONFIG_FILE):
-            with open(CONFIG_FILE, 'r') as f:
-                config = json.load(f)
-                # Atualiza as configurações com os valores do arquivo, mantendo os padrões se não existirem
-                for chave, valor in configuracoes_padrao.items():
-                    setattr(self, chave, config.get(chave, valor))
-                return config  # Retorna o dicionário de configurações
-        else:
-            # Salva as configurações padrão
-            self.salvar_configuracoes(configuracoes_padrao)
-            # Define as configurações padrão na instância
-            for chave, valor in configuracoes_padrao.items():
-                setattr(self, chave, valor)
-            return configuracoes_padrao  # Retorna as configurações padrão
-
-    def salvar_configuracoes(self, configuracoes):
-        """Salva as configurações atuais no arquivo JSON"""
-        with open(CONFIG_FILE, 'w') as f:
-            json.dump(configuracoes, f, indent=4)  # Salva o dicionário de configurações no arquivo
+    def atualizar_configuracoes(self):
+        """Atualiza todas as configurações e recria o notificador."""
+        configs = self.config.carregar_configuracoes()
+        self.notificador = configurar_notificacoes(configs)
+        self.intervalo_ping = self.config.intervalo_ping
+        self.max_hosts = self.config.max_hosts
+        self.tipos_notificacao = self.config.tipos_notificacao
 
     def carregar_historico(self):
-        """Carrega o histórico de hosts monitorados"""
+        """Carrega o histórico de hosts monitorados."""
         if os.path.exists(HISTORICO_FILE):
             try:
                 with open(HISTORICO_FILE, 'r') as f:
@@ -120,7 +91,7 @@ class MonitorMultiplosHosts:
         return []
 
     def adicionar_ao_historico(self, host):
-        """Adiciona um host ao histórico, evitando duplicatas"""
+        """Adiciona um host ao histórico, evitando duplicatas."""
         if host not in self.historico:
             self.historico.insert(0, host)  # Adiciona no início da lista
             if len(self.historico) > 9:  # Mantém apenas os 9 últimos
@@ -131,29 +102,29 @@ class MonitorMultiplosHosts:
         self.salvar_historico()  # Salva o histórico
 
     def salvar_historico(self):
-        """Salva o histórico de hosts monitorados"""
+        """Salva o histórico de hosts monitorados."""
         with open(HISTORICO_FILE, 'w') as f:
             json.dump(self.historico, f)
 
     def adicionar_host(self, hosts):
-        """Adiciona um ou mais hosts ao monitoramento"""
+        """Adiciona um ou mais hosts ao monitoramento."""
         for host in hosts:
             if host not in self.hosts:
-                self.hosts[host] = MonitorHost(host)  # Supondo que MonitorHost é a classe que você usa para monitorar um host
+                self.hosts[host] = MonitorHost(host)
                 print(f"Host {host} adicionado para monitoramento.")
             else:
                 print(f"Host {host} já está sendo monitorado.")
 
     def remover_host(self, host):
-        """Remove um host do monitoramento e do histórico"""
+        """Remove um host do monitoramento e do histórico."""
         with self.lock:
             if host in self.hosts:
                 del self.hosts[host]
-                self.historico.remove(host)  # Remove do histórico
-                self.salvar_historico()  # Salva o histórico
+                self.historico.remove(host)
+                self.salvar_historico()
 
     def verificar_ping(self, host):
-        """Verifica o ping para um host específico"""
+        """Verifica o ping para um host específico."""
         param = '-n' if platform.system().lower() == 'windows' else '-c'
         
         try:
@@ -179,7 +150,9 @@ class MonitorMultiplosHosts:
             return None, f"Erro: {str(e)}"
 
     def monitor_thread(self, host):
-        """Thread para monitorar um host específico"""
+        """Thread para monitorar um host específico."""
+        gerenciador_log = GerenciadorLog.get_instance(host)
+        
         while self.running:
             ms, status = self.verificar_ping(host)
             
@@ -187,57 +160,48 @@ class MonitorMultiplosHosts:
                 monitor: MonitorHost = self.hosts[host]
                 monitor.adicionar_resultado(ms, status)
                 
-                # Adiciona log
-                self.gerenciador_log.registrar_log({
+                gerenciador_log.registrar_log({
                     'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                     'host': host,
                     'ping': ms,
                     'status': status
                 })
                 
-                # Verifica se deve enviar notificação
                 if monitor.deve_notificar():
                     mensagem = f"Falha detectada no host {host}\nStatus: {status}"
                     titulo = f"Alerta de Conexão - {host}"
                     
-                    # Envia notificações e registra resultados
                     resultados = self.notificador.enviar_notificacao(
                         mensagem=mensagem,
                         titulo=titulo,
-                        tipos=self.tipos_notificacao,  # Usa os tipos de notificação configurados
+                        tipos=self.tipos_notificacao,
                         host=host
                     )
                     
-                    # Registra os resultados das tentativas de notificaço no log
-                    self.gerenciador_log.registrar_log_notificacao(host, resultados)
+                    gerenciador_log.registrar_log_notificacao(resultados)
             
-            time.sleep(self.intervalo_ping)  # Usa o intervalo configurado
-            
+            time.sleep(self.intervalo_ping)
+
     def iniciar_monitoramento(self):
-        """Inicia o monitoramento de todos os hosts"""
+        """Inicia o monitoramento de todos os hosts."""
+        self.atualizar_configuracoes()  # Mova a atualização de configurações para cá
         self.running = True
         
-        # Inicia uma thread para cada host, respeitando o número máximo de hosts
         for host in list(self.hosts.keys())[:self.max_hosts]:
             thread = threading.Thread(target=self.monitor_thread, args=(host,))
             thread.daemon = True
             self.threads.append(thread)
             thread.start()
-        
-        # Inicia thread para salvar logs
-        log_thread = threading.Thread(target=self.gerenciador_log.salvar_logs)
-        log_thread.daemon = True
-        log_thread.start()
-        
+
     def parar_monitoramento(self):
-        """Para o monitoramento de todos os hosts"""
+        """Para o monitoramento de todos os hosts."""
         self.running = False
         for thread in self.threads:
             thread.join()
         self.threads.clear()
         
     def obter_estatisticas(self):
-        """Retorna estatísticas de todos os hosts monitorados"""
+        """Retorna estatísticas de todos os hosts monitorados."""
         estatisticas = {}
         with self.lock:
             for host, monitor in self.hosts.items():
@@ -255,58 +219,12 @@ class MonitorMultiplosHosts:
         return estatisticas
 
     def configurar_monitoramento(self):
-        """Configura o monitoramento de hosts"""
-        print("Configuração do Monitoramento:")
-        try:
-            # Configura o intervalo de ping
-            intervalo_input = input(f"Digite o intervalo de ping em segundos (padrão {self.intervalo_ping}s): ")
-            self.intervalo_ping = int(intervalo_input) if intervalo_input else self.intervalo_ping
-            
-            # Configura o número máximo de hosts
-            max_hosts_input = input(f"Digite o número máximo de hosts a serem monitorados (padrão {self.max_hosts}): ")
-            self.max_hosts = int(max_hosts_input) if max_hosts_input else self.max_hosts
-            
-            # Configura os tipos de notificação
-            print("Escolha os tipos de notificação (separados por vírgula):")
-            print("1. desktop")
-            print("2. sms")
-            print("3. email")
-            print("4. telegram")
-            print("5. whatsapp")
-            
-            opcoes_notificacao = input("Digite os números das opções desejadas (padrão: 1): ") or '1'
-            
-            tipos_notificacao = {
-                '1': 'desktop',
-                '2': 'sms',
-                '3': 'email',
-                '4': 'telegram',
-                '5': 'whatsapp'
-            }
-            
-            # Armazena as opções selecionadas
-            self.tipos_notificacao = [tipos_notificacao[numero] for numero in opcoes_notificacao.split(',') if numero in tipos_notificacao]
-            
-            # Se nenhuma opção foi selecionada, usa o padrão
-            if not self.tipos_notificacao:
-                self.tipos_notificacao = ['desktop']
-            
-            # Salva as novas configurações
-            configuracoes_atualizadas = {
-                'intervalo_ping': self.intervalo_ping,
-                'max_hosts': self.max_hosts,
-                'tipos_notificacao': self.tipos_notificacao
-            }
-            
-            print("Novas configurações:")
-            print(configuracoes_atualizadas)
-            
-            self.salvar_configuracoes(configuracoes_atualizadas)  # Salva as novas configurações
-        except ValueError:
-            print("Entrada inválida. Usando configurações padrão.")
+        """Configura o monitoramento e atualiza o notificador."""
+        self.config.configurar()
+        self.atualizar_configuracoes()  # Atualiza todas as configurações incluindo o notificador
 
     def selecionar_host(self):
-        """Permite ao usuário selecionar um ou mais hosts do histórico ou digitar novos"""
+        """Permite ao usuário selecionar um ou mais hosts do histórico ou digitar novos."""
         historico = self.carregar_historico()
         hosts_selecionados = []  # Lista para armazenar os hosts selecionados
 
@@ -322,11 +240,10 @@ class MonitorMultiplosHosts:
                     opcao = input("\nEscolha uma opção ou digite os números separados por vírgula): ")
 
                 else:
-                    
                     print("D. Digitar novo endereço")
                     print("C. Configurar o monitor")
                 
-                    opcao = input("\nEscolha uma opçãoa: ")
+                    opcao = input("\nEscolha uma opção: ")
                     
                 if opcao.upper() == "C":
                     self.configurar_monitoramento()  # Chama a nova função de configuração
@@ -360,12 +277,13 @@ class MonitorMultiplosHosts:
         self.adicionar_ao_historico(host)  # Adiciona ao histórico
         return [host]  # Retorna uma lista com o host
 
-# Exemplo de uso
+
 def main():
+    """Função principal que inicia o programa."""
     
     print(" By: ".center(120, "—"))
-    print(apresentação())
-    print(" Versão: ".center(120, "—"))
+    print(Apresentação())
+    print(f" Versão: {__version__}".center(120, "—"))
     print("Seja Bem-vindo ao Monitor de Redes!")
     print("Este programa monitora a conectividade de múltiplos hosts.")
     print("Você pode adicionar, remover e monitorar hosts de sua escolha.")
@@ -391,7 +309,6 @@ def main():
     for host in MonitorMultiplo.hosts.keys():
         print(f"- {host}")
 
-    
     print("Iniciando monitoramento de múltiplos hosts...")
     print("Pressione Ctrl+C para parar")
     
@@ -423,6 +340,13 @@ def main():
         print("\nParando monitoramento...")
         MonitorMultiplo.parar_monitoramento()
         print("Monitoramento finalizado!")
-
+        
+    except Exception as e:
+        print(f"Ocorreu um erro: {str(e)}")
+        input("Pressione Enter para sair...")
+    
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\nMonitoramento finalizado!")

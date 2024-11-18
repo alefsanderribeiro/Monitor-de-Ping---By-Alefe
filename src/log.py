@@ -4,22 +4,41 @@ import queue
 import threading
 
 class GerenciadorLog:
-    def __init__(self):
+    _instances = {}  # Dicionário para armazenar instâncias únicas por host
+    
+    @classmethod
+    def get_instance(cls, host=None):
+        """Implementa o padrão Singleton por host"""
+        if host not in cls._instances:
+            cls._instances[host] = cls(host)
+        return cls._instances[host]
+    
+    def __init__(self, host=None):
+        self.host = host
         self.log_queue = queue.Queue()
         self.running = True
         self._criar_diretorio_logs()
+        self.log_file = self._criar_arquivo_log()
         # Inicia o thread para salvar logs
-        threading.Thread(target=self.salvar_logs, daemon=True).start()
+        self.log_thread = threading.Thread(target=self.salvar_logs, daemon=True)
+        self.log_thread.start()
         
     def _criar_diretorio_logs(self):
         """Cria o diretório de logs se não existir"""
         os.makedirs('logs', exist_ok=True)
         
+    def _criar_arquivo_log(self):
+        """Cria o nome do arquivo de log baseado no host"""
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        if self.host:
+            return f"logs/log_{self.host}_{timestamp}.txt"
+        return f"logs/ping_multi_log_{timestamp}.txt"
+        
     def registrar_log(self, log_entry):
         """Adiciona uma entrada de log à fila"""
         self.log_queue.put(log_entry)
         
-    def registrar_log_notificacao(self, host, resultados_notificacao):
+    def registrar_log_notificacao(self, resultados_notificacao):
         """Registra os resultados das tentativas de notificação"""
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         for tipo, sucesso in resultados_notificacao.items():
@@ -28,22 +47,19 @@ class GerenciadorLog:
             #status = "Sucesso" if sucesso else "Falha"
             if sucesso == True:
                 status = "Sucesso"
-            
                 self.registrar_log({
                     'timestamp': timestamp,
-                    'host': host,
+                    'host': self.host,
                     'tipo_notificacao': tipo,
-                    'status': status
+                    'status': 'Sucesso'
                 })
             
     def salvar_logs(self):
         """Salva os logs em arquivo"""
-        log_file = f"logs/ping_multi_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
-        
         while self.running:
             try:
                 log_entry = self.log_queue.get(timeout=1)
-                with open(log_file, 'a', encoding='utf-8') as f:
+                with open(self.log_file, 'a', encoding='utf-8') as f:
                     if 'tipo' in log_entry:
                         if log_entry['tipo'] == 'erro_notificacao':
                             f.write(f"[{log_entry['timestamp']}] ERRO {log_entry['servico']}: "
@@ -64,3 +80,5 @@ class GerenciadorLog:
     def parar(self):
         """Para o gerenciador de logs"""
         self.running = False
+        if self.log_thread.is_alive():
+            self.log_thread.join()

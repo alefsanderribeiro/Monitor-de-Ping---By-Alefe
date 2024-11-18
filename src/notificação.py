@@ -6,6 +6,7 @@ from email.mime.multipart import MIMEMultipart
 import requests
 import queue
 from log import GerenciadorLog
+from twilio.rest import Client
 
 class NotificadorBase:
     """Classe base para todos os tipos de notificadores"""
@@ -61,6 +62,11 @@ class NotificadorEmail(NotificadorBase):
 
     def enviar_notificacao(self, assunto, mensagem):
         """Envia uma notificação por e-mail"""
+        # Verifica se as credenciais estão configuradas
+        if not all([self.email_remetente, self.senha_remetente, self.email_destinatario]):
+            print("Credenciais de Email não configuradas corretamente.")
+            return False
+
         if not self.pode_notificar():
             return False
 
@@ -97,6 +103,11 @@ class NotificadorTelegram(NotificadorBase):
 
     def enviar_notificacao(self, mensagem):
         """Envia uma notificação via Telegram"""
+        # Verifica se as credenciais estão configuradas
+        if not all([self.token_bot, self.chat_id]):
+            print("Credenciais do Telegram não configuradas corretamente.")
+            return False
+
         if not self.pode_notificar():
             return False
 
@@ -128,18 +139,27 @@ class NotificadorSMS(NotificadorBase):
         self.auth_token = auth_token
         self.numero_remetente = numero_remetente
         self.numero_destinatario = numero_destinatario
-        
-        # Importa Twilio apenas se for necessário
-        try:
-            from twilio.rest import Client
-            self.client = Client(account_sid, auth_token)
-        except ImportError:
-            print("Twilio não está instalado. Use: pip install twilio")
-            self.client = None
+        self.client = None  # Inicializa como None
+
+    def inicializar_client(self):
+        """Inicializa o cliente Twilio apenas quando necessário"""
+        if self.client is None and all([self.account_sid, self.auth_token]):
+            try:
+                self.client = Client(self.account_sid, self.auth_token)
+            except ImportError:
+                print("Twilio não está instalado. Use: pip install twilio")
+                self.client = None
 
     def enviar_notificacao(self, mensagem):
         """Envia uma notificação via SMS"""
-        if not self.pode_notificar() or not self.client:
+        # Verifica se as credenciais estão configuradas
+        if not all([self.account_sid, self.auth_token, self.numero_remetente, self.numero_destinatario]):
+            print("Credenciais SMS não configuradas corretamente.")
+            return False
+
+        self.inicializar_client()  # Tenta inicializar o cliente aqui
+
+        if not self.client:  # Se ainda não conseguiu inicializar, retorna False
             return False
 
         try:
@@ -195,6 +215,11 @@ class NotificadorWhatsApp(NotificadorBase):
 
     def enviar_notificacao(self, mensagem):
         """Envia uma notificação via WhatsApp"""
+        # Verifica se as credenciais estão configuradas
+        if not all([self.url, self.token, self.numero_destinatario]):
+            print("Credenciais do WhatsApp não configuradas corretamente.")
+            return False
+
         headers = {
             "Authorization": f"Bearer {self.token}",
             "Content-Type": "application/json"
@@ -219,21 +244,10 @@ class GerenciadorNotificacoes:
     """Classe para gerenciar todos os tipos de notificações"""
     def __init__(self):
         self.notificadores = {}
-        self.gerenciador_log = GerenciadorLog()  # Nova instância
 
     def adicionar_notificador(self, tipo, notificador):
         """Adiciona um novo notificador"""
         self.notificadores[tipo] = notificador
-
-    def processar_logs_notificadores(self):
-        """Processa os logs de todos os notificadores"""
-        for notificador in self.notificadores.values():
-            try:
-                while True:
-                    log_entry = notificador.log_queue.get_nowait()
-                    self.gerenciador_log.registrar_log(log_entry)
-            except queue.Empty:
-                continue
 
     def enviar_notificacao(self, mensagem, titulo=None, tipos=None, host=None):
         """Envia notificação para todos os tipos especificados"""
@@ -241,16 +255,16 @@ class GerenciadorNotificacoes:
             tipos = self.notificadores.keys()
 
         resultados = {}
+        gerenciador_log = GerenciadorLog.get_instance(host)
+        
         for tipo in tipos:
             if tipo in self.notificadores:
-                notificador:GerenciadorNotificacoes = self.notificadores[tipo]
-                notificador.host = host  # Define o host atual
+                notificador = self.notificadores[tipo]
+                notificador.host = host
                 
-                # Verifica se pode notificar (isso já vai gerar o log de aguardando se necessário)
                 pode_notificar = notificador.pode_notificar()
                 
                 if pode_notificar:
-                    # Tenta enviar a notificação
                     if tipo == 'email':
                         resultados[tipo] = notificador.enviar_notificacao(
                             titulo or "Alerta de Monitoramento", 
@@ -263,14 +277,19 @@ class GerenciadorNotificacoes:
                         )
                     else:
                         resultados[tipo] = notificador.enviar_notificacao(mensagem)
-                    
-                    if resultados[tipo]:
-                        notificador.ultima_notificacao = datetime.now()
                 else:
                     resultados[tipo] = False
-
-        # Processa os logs após todas as tentativas
-        self.processar_logs_notificadores()
+                    
+                # Registra logs de notificação no gerenciador específico do host
+                if not pode_notificar:
+                    gerenciador_log.registrar_log({
+                        'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        'tipo': 'aguardando_intervalo',
+                        'servico': tipo,
+                        'host': host,
+                        'tempo_restante': notificador.intervalo_minimo - 
+                            (datetime.now() - notificador.ultima_notificacao).total_seconds()
+                    })
         
         return resultados
 
@@ -286,33 +305,33 @@ def configurar_notificacoes(config):
 
     # Configurar Email
     email_notificador = NotificadorEmail(
-        email_remetente=config.get('email_remetente', 'seu_email@gmail.com'),
-        senha_remetente=config.get('senha_remetente', 'sua_senha'),
-        email_destinatario=config.get('email_destinatario', 'destinatario@gmail.com')
+        email_remetente=config.get('email_remetente', None),
+        senha_remetente=config.get('senha_remetente', None),
+        email_destinatario=config.get('email_destinatario', None)
     )
     gerenciador.adicionar_notificador('email', email_notificador)
 
     # Configurar Telegram
     telegram_notificador = NotificadorTelegram(
-        token_bot=config.get('token_bot_telegram', 'seu_token_bot'),
-        chat_id=config.get('chat_id_telegram', 'seu_chat_id')
+        token_bot=config.get('token_bot_telegram', None),
+        chat_id=config.get('chat_id_telegram', None)
     )
     gerenciador.adicionar_notificador('telegram', telegram_notificador)
 
     # Configurar SMS (Twilio)
     sms_notificador = NotificadorSMS(
-        account_sid=config.get('account_sid_twilio', 'seu_account_sid'),
-        auth_token=config.get('auth_token_twilio', 'seu_auth_token'),
-        numero_remetente=config.get('numero_remetente_twilio', '+1234567890'),
-        numero_destinatario=config.get('numero_destinatario_twilio', '+0987654321')
+        account_sid=config.get('account_sid_twilio', None),
+        auth_token=config.get('auth_token_twilio', None),
+        numero_remetente=config.get('numero_remetente_twilio', None),
+        numero_destinatario=config.get('numero_destinatario_twilio', None)
     )
     gerenciador.adicionar_notificador('sms', sms_notificador)
 
     # Configurar WhatsApp Business API
     whatsapp_notificador = NotificadorWhatsApp(
-        url=config.get('url_whatsapp', 'https://graph.facebook.com/v13.0/YOUR_PHONE_NUMBER_ID/messages'),
-        token=config.get('token_whatsapp', 'YOUR_ACCESS_TOKEN'),
-        numero_destinatario=config.get('numero_destinatario_whatsapp', '5599993451333')
+        url=config.get('url_whatsapp', None),
+        token=config.get('token_whatsapp', None),
+        numero_destinatario=config.get('numero_destinatario_whatsapp', None)
     )
     gerenciador.adicionar_notificador('whatsapp', whatsapp_notificador)
 

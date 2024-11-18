@@ -1,6 +1,4 @@
-# Arquivos de build e cache
-build/
-dist/
+# Arquivos de cache
 __pycache__/
 *.pyc
 *.pyo

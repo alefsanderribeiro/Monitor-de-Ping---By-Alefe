@@ -1,7 +1,7 @@
 [project]
-name = "verificar-conexao"
-version = "0.1.0"
-description = "Add your description here"
+name = "Monitor-de-Ping--By-Alefe"
+version = "0.2.0"
+description = "Monitoramento de Ping com Histórico"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
